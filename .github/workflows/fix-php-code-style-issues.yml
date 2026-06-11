@@ -5,13 +5,11 @@ on:
     paths:
       - '**.php'
 
-permissions:
-  contents: write
-
 jobs:
   php-code-styling:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    if: false
 
     steps:
       - name: Checkout code
