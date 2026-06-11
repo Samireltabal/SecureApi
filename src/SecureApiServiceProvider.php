@@ -2,9 +2,9 @@
 
 namespace SamirEltabal\SecureApi;
 
+use SamirEltabal\SecureApi\Commands\SecureApiCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use SamirEltabal\SecureApi\Commands\SecureApiCommand;
 
 class SecureApiServiceProvider extends PackageServiceProvider
 {
