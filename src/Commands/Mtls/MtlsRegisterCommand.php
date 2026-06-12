@@ -27,7 +27,8 @@ class MtlsRegisterCommand extends Command
             return self::FAILURE;
         }
 
-        $applicationId = (string) $this->argument('app');
+        $applicationId = $this->argument('app');
+        assert(is_string($applicationId));
         $application = $secureApi->findApplication($applicationId);
 
         if ($application === null) {
@@ -36,7 +37,8 @@ class MtlsRegisterCommand extends Command
             return self::FAILURE;
         }
 
-        $certPath = (string) $this->argument('cert');
+        $certPath = $this->argument('cert');
+        assert(is_string($certPath));
 
         if (! file_exists($certPath)) {
             $this->error("Certificate file not found: {$certPath}");

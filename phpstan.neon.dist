@@ -10,3 +10,4 @@ parameters:
     tmpDir: build/phpstan
     configDirectories:
         - config
+    reportUnmatchedIgnoredErrors: false

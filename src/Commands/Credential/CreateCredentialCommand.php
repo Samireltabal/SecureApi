@@ -19,7 +19,8 @@ class CreateCredentialCommand extends Command
 
     public function handle(SecureApi $secureApi): int
     {
-        $applicationId = (string) $this->argument('application');
+        $applicationId = $this->argument('application');
+        assert(is_string($applicationId));
         $application = $secureApi->findApplication($applicationId);
 
         if ($application === null) {
@@ -39,7 +40,9 @@ class CreateCredentialCommand extends Command
         }
 
         if ($this->option('expires')) {
-            $options['expires_at'] = new \DateTime((string) $this->option('expires'));
+            $expires = $this->option('expires');
+            assert(is_string($expires));
+            $options['expires_at'] = new \DateTime($expires);
         }
 
         $issued = $secureApi->createApiKeyCredential($applicationId, $options);
