@@ -20,7 +20,7 @@ class AppSettingsCommand extends Command
 
     public function handle(SecureApi $secureApi): int
     {
-        $id = $this->argument('id');
+        $id = (string) $this->argument('id');
         $application = $secureApi->findApplication($id);
 
         if ($application === null) {

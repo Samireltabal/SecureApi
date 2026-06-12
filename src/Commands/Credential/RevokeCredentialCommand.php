@@ -16,7 +16,7 @@ class RevokeCredentialCommand extends Command
 
     public function handle(SecureApi $secureApi): int
     {
-        $id = $this->argument('id');
+        $id = (string) $this->argument('id');
         $revoked = $secureApi->revokeCredential($id);
 
         if (! $revoked) {

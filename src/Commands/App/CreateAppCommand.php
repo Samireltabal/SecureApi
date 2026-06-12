@@ -25,7 +25,7 @@ class CreateAppCommand extends Command
                 : null,
         ], fn ($v) => $v !== null);
 
-        $application = $secureApi->createApplication($this->argument('name'), $options);
+        $application = $secureApi->createApplication((string) $this->argument('name'), $options);
 
         $this->info('Application created successfully.');
         $this->table(['Field', 'Value'], [
