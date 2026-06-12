@@ -2,18 +2,14 @@
 
 mTLS (mutual TLS) verifies the client by a certificate fingerprint. SecureApi uses a **proxy-forwarded header model**: your TLS-terminating proxy (nginx, Envoy, Caddy) validates the client certificate and forwards the result in HTTP headers. PHP never sees raw TLS — it trusts the proxy.
 
-**Fail-loud design**: if `secureapi.mtls.enabled` is `true` but `trusted_proxies` is empty (or vice versa), the mechanism throws `MtlsNotEnabled` (HTTP 500) rather than silently returning 401. This surfaces infrastructure misconfiguration immediately.
+**Fail-loud design**: if `secureapi.mtls.enabled` is `true` but `trusted_proxies` is empty (or vice versa), the middleware throws `MtlsNotEnabled` (HTTP 500) rather than silently returning 401. This surfaces infrastructure misconfiguration immediately.
 
-## Guard setup
+## Route protection
 
 ```php
-// config/auth.php
-'guards' => [
-    'mtls-api' => [
-        'driver'     => 'secureapi',
-        'mechanisms' => ['mtls'],
-    ],
-],
+Route::middleware('secureapi:mtls')->group(function () {
+    Route::post('/internal/sync', SyncController::class);
+});
 ```
 
 ## Configuration
@@ -21,12 +17,10 @@ mTLS (mutual TLS) verifies the client by a certificate fingerprint. SecureApi us
 ```php
 // config/secureapi.php
 'mtls' => [
-    'enabled'          => env('SECUREAPI_MTLS_ENABLED', false),
-    'trusted_proxies'  => array_filter(
-        explode(',', env('SECUREAPI_MTLS_TRUSTED_PROXIES', ''))
-    ),
-    'verify_header'    => 'ssl-client-verify',   // header set to SUCCESS on valid cert
-    'cert_header'      => 'ssl-client-cert',     // URL-encoded PEM of the client cert
+    'enabled'         => env('SECUREAPI_MTLS_ENABLED', false),
+    'trusted_proxies' => [],          // required when enabled; supports IPv4, IPv6, CIDR
+    'verify_header'   => 'ssl-client-verify',   // header set to SUCCESS on valid cert
+    'cert_header'     => 'ssl-client-cert',     // URL-encoded PEM of the client cert
 ],
 ```
 
@@ -45,7 +39,19 @@ Both `enabled=true` **and** a non-empty `trusted_proxies` list are required. Mis
 php artisan secureapi:mtls:register <app-name> /path/to/client.crt
 ```
 
-This computes the SHA-256 fingerprint of the PEM certificate and stores it on a new `mtls_cert` credential. The command is blocked when `secureapi.mtls.enabled` is `false`.
+This computes the SHA-256 fingerprint of the PEM certificate and stores it on a new `mtls_cert` credential.
+
+## Revoking a certificate
+
+```bash
+php artisan secureapi:credential:revoke <credential-id>
+```
+
+Or programmatically:
+
+```php
+SecureApi::revokeCredential($credentialId);
+```
 
 ## nginx configuration
 
@@ -56,10 +62,10 @@ server {
     listen 443 ssl;
     server_name api.example.com;
 
-    ssl_certificate     /etc/ssl/server.crt;
-    ssl_certificate_key /etc/ssl/server.key;
+    ssl_certificate        /etc/ssl/server.crt;
+    ssl_certificate_key    /etc/ssl/server.key;
     ssl_client_certificate /etc/ssl/ca.crt;
-    ssl_verify_client   on;
+    ssl_verify_client      on;
 
     location / {
         proxy_pass http://php-fpm:9000;
@@ -84,12 +90,10 @@ The repo ships a Docker-based playground for local mTLS testing.
 bash docker/nginx-mtls/generate-certs.sh
 ```
 
-This creates `docker/nginx-mtls/certs/` with:
+Creates `docker/nginx-mtls/certs/` with:
 - `ca.crt` / `ca.key` — local CA
 - `server.crt` / `server.key` — nginx TLS certificate
 - `client.crt` / `client.key` — client certificate (for curl/Postman)
-
-The script also prints the client certificate SHA-256 fingerprint.
 
 ### 2. Start the nginx-mtls service
 
@@ -97,7 +101,7 @@ The script also prints the client certificate SHA-256 fingerprint.
 docker compose --profile mtls up -d
 ```
 
-This starts an nginx container on `https://localhost:8443` that terminates mTLS and proxies to your Laravel app.
+Starts nginx on `https://localhost:8443` proxying to your Laravel app.
 
 ### 3. Register the client certificate
 
@@ -119,6 +123,6 @@ Without `--cert`, nginx returns 400 (certificate required). With `--cert` but a 
 ## Security notes
 
 - **Never** forward `ssl-client-verify` or `ssl-client-cert` from untrusted sources. SecureApi validates that `REMOTE_ADDR` is in `trusted_proxies` before reading the headers. Requests from non-trusted IPs get an immediate 401.
-- Revoke a certificate by revoking the credential: `secureapi:key:revoke <credential-id>`. The fingerprint remains in the database for audit purposes.
+- Revoked credentials are rejected on every request even if the certificate itself is still valid at the TLS layer.
 - For zero-trust environments, combine mTLS with scope restrictions and per-application IP allow-listing.
 - Use IPv6 CIDR ranges in `trusted_proxies` where applicable — `IpUtils::checkIp()` handles both IPv4 and IPv6.

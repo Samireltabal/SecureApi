@@ -7,21 +7,32 @@ Scopes restrict what a credential can do. They are stored as a JSON array on the
 ### Assigning scopes
 
 ```php
-$credential = SecureApi::createApiKeyCredential($appId, [
+$issued = SecureApi::createApiKeyCredential($appId, [
     'scopes' => ['orders:read', 'orders:write', 'products:read'],
 ]);
 ```
 
-### Checking scopes
+### Enforcing scopes via middleware
 
 ```php
-// In a controller or middleware — after successful authentication
-if (! SecureApi::tokenCan('orders:write')) {
+// Require all listed scopes on the resolved credential
+Route::middleware(['secureapi:api_key', 'secureapi.scopes:orders:read'])->group(function () {
+    Route::get('/orders', OrderController::class);
+});
+```
+
+`secureapi.scope` is an alias for `secureapi.scopes` — both work.
+
+### Checking scopes programmatically
+
+```php
+// In a controller — after successful authentication
+if (! $request->attributes->get('secureapi.credential')?->hasScope('orders:write')) {
     abort(403, 'Insufficient scope');
 }
 ```
 
-`SecureApi::tokenCan()` returns `true` if the current credential has the given scope (or has no scopes — no-scope credentials have unrestricted access).
+A credential with **no scopes** has unrestricted access; scopes only restrict when explicitly set.
 
 ### Scope naming convention
 
@@ -31,7 +42,7 @@ Use `resource:action` format: `orders:read`, `webhooks:send`, `admin:users:write
 
 ## Rate Limiting
 
-Rate limiting is enforced by `RateLimitMiddleware` using Laravel's built-in `RateLimiter`.
+Rate limiting is enforced by the `secureapi.throttle` middleware using Laravel's built-in `RateLimiter`.
 
 ### Default limit (application-wide)
 
@@ -44,17 +55,22 @@ Rate limiting is enforced by `RateLimitMiddleware` using Laravel's built-in `Rat
 
 ### Per-application override
 
+Set `rate_limit_per_minute` directly on the application model:
+
 ```php
-// Set via Artisan or programmatically
-$application->rate_limit_per_minute = 120;
-$application->save();
+$application->update(['rate_limit_per_minute' => 120]);
+```
+
+Or via Artisan:
+
+```bash
+php artisan secureapi:app:settings <app-id>
 ```
 
 ### Applying the middleware
 
 ```php
-// routes/api.php
-Route::middleware(['auth:api', 'secureapi.rate_limit'])->group(function () {
+Route::middleware(['secureapi:api_key', 'secureapi.throttle'])->group(function () {
     Route::get('/resource', ResourceController::class);
 });
 ```
@@ -70,7 +86,15 @@ Retry-After: 30
 
 ## Audit Logs
 
-Every authentication event — success and failure — is written to `secure_api_audit_logs`.
+Every authentication failure is written to `secure_api_audit_logs`. Successes are also logged when the `secureapi.audit` middleware is on the route.
+
+### Applying the audit middleware
+
+```php
+Route::middleware(['secureapi:api_key', 'secureapi.audit'])->group(function () {
+    Route::post('/transactions', TransactionController::class);
+});
+```
 
 ### Schema
 
@@ -79,7 +103,7 @@ Every authentication event — success and failure — is written to `secure_api
 | `id` | ULID | Primary key |
 | `application_id` | ULID | Authenticated application (nullable on failure) |
 | `credential_id` | ULID | Authenticated credential (nullable on failure) |
-| `event` | string | `authenticated`, `failed`, `rate_limited`, etc. |
+| `event` | string | `auth.failed`, `auth.success`, etc. |
 | `ip_address` | string | Client IP |
 | `request_method` | string | HTTP method |
 | `request_path` | string | Request path |
@@ -92,7 +116,7 @@ Every authentication event — success and failure — is written to `secure_api
 use SamirEltabal\SecureApi\Models\AuditLog;
 
 // All failed attempts in the last hour
-AuditLog::where('event', 'failed')
+AuditLog::where('event', 'auth.failed')
     ->where('created_at', '>=', now()->subHour())
     ->get();
 
@@ -109,15 +133,15 @@ AuditLog::where('application_id', $appId)->latest('created_at')->get();
 ],
 ```
 
-Pruning uses Laravel's `MassPrunable`. Schedule it in your console kernel:
+`AuditLog` uses `MassPrunable`. Schedule it in your console routes:
 
 ```php
 // routes/console.php (Laravel 11+)
-Schedule::command('model:prune', ['--model' => AuditLog::class])
+Schedule::command('model:prune', ['--model' => \SamirEltabal\SecureApi\Models\AuditLog::class])
     ->daily();
 ```
 
-Or via the general prune command if you have other prunable models:
+Or include it in a general prune if you have other prunable models:
 
 ```bash
 php artisan model:prune

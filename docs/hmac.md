@@ -2,28 +2,50 @@
 
 HMAC authentication signs every request with `HMAC-SHA256`. The signature covers the HTTP method, path, timestamp, nonce, and a hash of the request body — preventing both tampering and replay attacks.
 
-## Guard setup
+## Route protection
 
 ```php
-// config/auth.php
-'guards' => [
-    'api' => [
-        'driver'     => 'secureapi',
-        'mechanisms' => ['hmac'],
-    ],
-],
+Route::middleware('secureapi:hmac')->group(function () {
+    Route::post('/webhooks', WebhookController::class);
+});
 ```
 
 ## Creating credentials
 
 ```php
-$credential = SecureApi::createHmacCredential($appId, [
+$issued = SecureApi::createHmacCredential($appId, [
     'name'   => 'webhook-producer',
     'scopes' => ['webhooks:send'],
 ]);
 
-$sharedSecret = $credential->secret;  // shown once
+$sharedSecret = $issued->plaintextKey; // AES-256 encrypted at rest; retrievable any time
 ```
+
+## Rotating credentials
+
+```php
+$new = SecureApi::rotateHmacCredential($credentialId);
+echo $new->plaintextKey; // new shared secret
+```
+
+Via Artisan:
+
+```bash
+php artisan secureapi:credential:rotate <credential-id>
+```
+
+## Required headers
+
+All four headers are required:
+
+```
+X-SecureApi-Key-Id:    <credential-id>
+X-SecureApi-Signature: <lowercase-hex-hmac-sha256>
+X-SecureApi-Timestamp: <unix-timestamp>
+X-SecureApi-Nonce:     <any-unique-string>
+```
+
+The credential is looked up by `X-SecureApi-Key-Id`. No `Authorization` header is used.
 
 ## Signing algorithm
 
@@ -32,7 +54,7 @@ string_to_sign = METHOD + "\n"
                + PATH + "\n"
                + UNIX_TIMESTAMP + "\n"
                + NONCE + "\n"
-               + SHA256_HEX(raw_body)   // empty string hash when no body
+               + SHA256_HEX(raw_body)   // hash of empty string when no body
 
 signature = HMAC-SHA256(string_to_sign, shared_secret)
             encoded as lowercase hex
@@ -51,19 +73,9 @@ $stringToSign = implode("\n", [$method, $path, $timestamp, $nonce, $bodyHash]);
 $signature    = hash_hmac('sha256', $stringToSign, $sharedSecret);
 ```
 
-## Required headers
-
-```
-X-SecureApi-Signature: <lowercase-hex-signature>
-X-SecureApi-Timestamp: <unix-timestamp>
-X-SecureApi-Nonce:     <any-unique-string>
-```
-
-The `Authorization` header is not used for HMAC — the credential is looked up by the nonce/signature pair.
-
 ## Replay window
 
-Requests with a timestamp older than `±timestamp_window` seconds are rejected. The default is 300 seconds (5 minutes).
+Requests with a timestamp outside `±timestamp_window` seconds are rejected. The default is 300 seconds (5 minutes).
 
 ```php
 // config/secureapi.php
@@ -72,7 +84,7 @@ Requests with a timestamp older than `±timestamp_window` seconds are rejected. 
 ],
 ```
 
-Each nonce is tracked in the Laravel cache for the duration of the window. In multi-node deployments, configure a shared cache store:
+Each nonce is tracked in the Laravel cache for the duration of the window. In multi-node deployments, use a shared cache store:
 
 ```php
 'replay' => [
@@ -82,6 +94,6 @@ Each nonce is tracked in the Laravel cache for the duration of the window. In mu
 
 ## Security notes
 
-- The shared secret is bcrypt-hashed at rest; plaintext shown once.
-- Changing the `timestamp_window` does not invalidate existing nonces — they expire based on their original timestamp.
+- The shared secret is stored **encrypted at rest** (AES-256-CBC via Laravel's `encrypted` cast). It can be retrieved at any time — e.g., to display it again in a management UI.
+- Changing `timestamp_window` does not invalidate existing nonces — they expire based on their original timestamp.
 - For the highest integrity, combine HMAC with TLS. HMAC protects request integrity; TLS provides confidentiality.

@@ -1,17 +1,13 @@
 # JWT Authentication
 
-SecureApi validates externally-issued JWTs. It supports RS256 (asymmetric, recommended) and HS256 (symmetric). `alg:none` is unconditionally rejected.
+SecureApi validates Bearer JWTs and can also issue them internally. Supports RS256 (asymmetric, recommended) and HS256 (symmetric). `alg:none` is unconditionally rejected.
 
-## Guard setup
+## Route protection
 
 ```php
-// config/auth.php
-'guards' => [
-    'jwt-api' => [
-        'driver'     => 'secureapi',
-        'mechanisms' => ['jwt'],
-    ],
-],
+Route::middleware('secureapi:jwt')->group(function () {
+    Route::get('/resource', ResourceController::class);
+});
 ```
 
 ## Configuration
@@ -19,13 +15,13 @@ SecureApi validates externally-issued JWTs. It supports RS256 (asymmetric, recom
 ```php
 // config/secureapi.php
 'jwt' => [
-    'algorithm'  => 'RS256',   // or 'HS256'
-    'public_key' => env('SECUREAPI_JWT_PUBLIC_KEY'),
-    'private_key'=> env('SECUREAPI_JWT_PRIVATE_KEY'),   // only needed to issue tokens
-    'key_id'     => env('SECUREAPI_JWT_KEY_ID'),
-    'issuer'     => env('SECUREAPI_JWT_ISSUER', env('APP_URL')),
-    'audience'   => env('SECUREAPI_JWT_AUDIENCE'),
-    'ttl'        => 3600,
+    'algorithm'   => 'RS256',   // or 'HS256'
+    'public_key'  => env('SECUREAPI_JWT_PUBLIC_KEY'),
+    'private_key' => env('SECUREAPI_JWT_PRIVATE_KEY'),  // only needed to issue tokens
+    'key_id'      => env('SECUREAPI_JWT_KEY_ID'),
+    'issuer'      => env('SECUREAPI_JWT_ISSUER', env('APP_URL')),
+    'audience'    => env('SECUREAPI_JWT_AUDIENCE'),
+    'ttl'         => 3600,
 ],
 ```
 
@@ -34,15 +30,12 @@ SecureApi validates externally-issued JWTs. It supports RS256 (asymmetric, recom
 Generate a key pair:
 
 ```bash
-php artisan secureapi:jwt:generate-keys
+php artisan secureapi:jwt:keys
 ```
 
 This prints `SECUREAPI_JWT_PUBLIC_KEY` and `SECUREAPI_JWT_PRIVATE_KEY` values ready to paste into `.env`.
 
-`.env`:
-
 ```env
-SECUREAPI_JWT_ALGORITHM=RS256
 SECUREAPI_JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 SECUREAPI_JWT_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
 SECUREAPI_JWT_ISSUER=https://auth.example.com
@@ -62,10 +55,10 @@ SECUREAPI_JWT_PRIVATE_KEY=your-long-random-hs256-secret
 
 Incoming JWTs must have:
 
-- `sub` claim — credential ID (used to look up the credential in the database)
-- `iss` claim — must match `secureapi.jwt.issuer`
-- `aud` claim — must match `secureapi.jwt.audience` (if configured)
-- valid `exp` (not expired)
+- `sub` — credential ID (used to look up the credential in the database)
+- `iss` — must match `secureapi.jwt.issuer`
+- `aud` — must match `secureapi.jwt.audience` (if configured)
+- `exp` — must not be expired
 
 ## Making requests
 
@@ -75,19 +68,30 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
 Accept: application/json
 ```
 
-## Issuing tokens (internal use)
+## Issuing tokens internally
 
-When SecureApi issues JWT credentials (e.g., for internal service accounts), the private key signs them. External IdPs issue tokens independently and SecureApi only validates them.
+Create a JWT credential and issue a signed token (uses the app's private key from config):
 
 ```php
 $credential = SecureApi::createJwtCredential($appId, [
     'name'   => 'internal-worker',
     'scopes' => ['jobs:process'],
 ]);
+
+$token = SecureApi::issueToken($appId, [
+    'credential_id' => $credential->id,
+]);
+// Send as: Authorization: Bearer <token>
 ```
+
+Tokens can be re-issued at any time — useful for short-lived service-account tokens.
+
+## Validating externally-issued tokens
+
+For external IdPs (Auth0, Keycloak, Cognito, etc.), set `public_key` to the IdP's public key and `issuer` / `audience` to match the IdP's token claims. SecureApi validates the signature and claims; no JWT credential is required for external-only setups.
 
 ## Security notes
 
 - `alg:none` is blocked unconditionally — even if a modified JWT header requests it.
 - Rotate RS256 keys by generating a new pair, updating `SECUREAPI_JWT_PUBLIC_KEY`, and re-issuing tokens. Old tokens become invalid immediately.
-- For HS256, treat the secret as a password — long, random, and never logged.
+- For HS256, treat the key as a password — long, random, and never logged or committed.
