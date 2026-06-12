@@ -8,13 +8,9 @@ use SamirEltabal\SecureApi\Facades\SecureApi;
 beforeEach(function () {
     RateLimiter::clear('');
     config()->set('cache.default', 'array');
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
 
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.throttle'])
+        ->middleware(['secureapi:api_key', 'secureapi.throttle'])
         ->get('/protected', fn () => response()->json(['ok' => true]));
 });
 

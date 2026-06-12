@@ -2,18 +2,14 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\Request;
 use SamirEltabal\SecureApi\Facades\SecureApi;
 use SamirEltabal\SecureApi\Models\AuditLog;
 use SamirEltabal\SecureApi\Models\Credential;
 
 beforeEach(function () {
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/protected', fn () => response()->json(['ok' => true]));
 });
 
@@ -103,18 +99,23 @@ test('authentication updates last_used_at on credential', function () {
     expect(Credential::find($issued->credential->id)->last_used_at)->not->toBeNull();
 });
 
-test('resolved application is accessible as auth user', function () {
+test('resolved credential is accessible via apiCredential()', function () {
     $app = SecureApi::createApplication('Test App');
     $issued = SecureApi::createApiKeyCredential($app->id);
 
+    $credentialId = null;
     $this->app['router']
-        ->middleware(['auth:test-api'])
-        ->get('/me', fn () => response()->json(['id' => auth('test-api')->id()]));
+        ->middleware(['secureapi:api_key'])
+        ->get('/me', function (Request $request) use (&$credentialId) {
+            $credentialId = $request->apiCredential()?->id;
+
+            return response()->json(['credential_id' => $credentialId]);
+        });
 
     $this->withHeader('Authorization', "Bearer {$issued->plaintextKey}")
         ->getJson('/me')
         ->assertOk()
-        ->assertJson(['id' => $app->id]);
+        ->assertJson(['credential_id' => $issued->credential->id]);
 });
 
 test('rejection writes audit log immediately', function () {

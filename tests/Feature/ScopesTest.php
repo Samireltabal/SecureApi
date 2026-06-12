@@ -4,16 +4,9 @@ declare(strict_types=1);
 
 use SamirEltabal\SecureApi\Facades\SecureApi;
 
-beforeEach(function () {
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
-});
-
 test('credential with required scope passes', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scopes:read'])
+        ->middleware(['secureapi:api_key', 'secureapi.scopes:read'])
         ->get('/scoped', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -26,7 +19,7 @@ test('credential with required scope passes', function () {
 
 test('credential missing required scope returns 403', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scopes:write'])
+        ->middleware(['secureapi:api_key', 'secureapi.scopes:write'])
         ->get('/scoped', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -39,7 +32,7 @@ test('credential missing required scope returns 403', function () {
 
 test('all required scopes must be present (AND logic)', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scopes:read:write'])
+        ->middleware(['secureapi:api_key', 'secureapi.scopes:read:write'])
         ->get('/scoped', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -52,7 +45,7 @@ test('all required scopes must be present (AND logic)', function () {
 
 test('credential with null scopes passes any scope check', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scopes:read:write:admin'])
+        ->middleware(['secureapi:api_key', 'secureapi.scopes:read:write:admin'])
         ->get('/scoped', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -65,7 +58,7 @@ test('credential with null scopes passes any scope check', function () {
 
 test('secureapi.scope alias works for single scope', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scope:admin'])
+        ->middleware(['secureapi:api_key', 'secureapi.scope:admin'])
         ->get('/admin-only', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -78,7 +71,7 @@ test('secureapi.scope alias works for single scope', function () {
 
 test('unauthenticated request is 401 not 403', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.scopes:read'])
+        ->middleware(['secureapi:api_key', 'secureapi.scopes:read'])
         ->get('/scoped', fn () => response()->json(['ok' => true]));
 
     $this->getJson('/scoped')

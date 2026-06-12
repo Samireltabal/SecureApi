@@ -105,12 +105,8 @@ test('rotateApiKeyCredential replaces secret hash and returns new key', function
 });
 
 test('original key no longer works after rotation', function () {
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/protected', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');

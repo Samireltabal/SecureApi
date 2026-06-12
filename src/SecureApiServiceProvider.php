@@ -7,13 +7,11 @@ namespace SamirEltabal\SecureApi;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use SamirEltabal\SecureApi\Auth\ApiKeyAuthenticator;
 use SamirEltabal\SecureApi\Auth\HmacAuthenticator;
 use SamirEltabal\SecureApi\Auth\JwtAuthenticator;
 use SamirEltabal\SecureApi\Auth\MtlsAuthenticator;
-use SamirEltabal\SecureApi\Auth\SecureApiGuard;
 use SamirEltabal\SecureApi\Commands\App\AppSettingsCommand;
 use SamirEltabal\SecureApi\Commands\App\CreateAppCommand;
 use SamirEltabal\SecureApi\Commands\App\RevokeAppCommand;
@@ -25,6 +23,7 @@ use SamirEltabal\SecureApi\Commands\Mtls\MtlsRegisterCommand;
 use SamirEltabal\SecureApi\Http\Controllers\OauthTokenController;
 use SamirEltabal\SecureApi\Middleware\AllowedIpsMiddleware;
 use SamirEltabal\SecureApi\Middleware\AuditMiddleware;
+use SamirEltabal\SecureApi\Middleware\SecureApiAuthenticate;
 use SamirEltabal\SecureApi\Middleware\ScopesMiddleware;
 use SamirEltabal\SecureApi\Middleware\ThrottleMiddleware;
 use SamirEltabal\SecureApi\Models\Credential;
@@ -56,10 +55,6 @@ class SecureApiServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        Auth::extend('secureapi', function ($app, string $name, array $config) {
-            return new SecureApiGuard($name, $config, $app);
-        });
-
         $this->registerMiddlewareAliases();
         $this->registerRequestMacro();
         $this->registerOauthEndpoint();
@@ -82,6 +77,7 @@ class SecureApiServiceProvider extends PackageServiceProvider
     {
         $router = $this->app->make(Router::class);
 
+        $router->aliasMiddleware('secureapi', SecureApiAuthenticate::class);
         $router->aliasMiddleware('secureapi.scopes', ScopesMiddleware::class);
         $router->aliasMiddleware('secureapi.scope', ScopesMiddleware::class);
         $router->aliasMiddleware('secureapi.allow_ips', AllowedIpsMiddleware::class);

@@ -22,13 +22,9 @@ function generateTestCert(): array
 
 beforeEach(function () {
     config()->set('cache.default', 'array');
-    config()->set('auth.guards.test-mtls', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['mtls'],
-    ]);
 
     $this->app['router']
-        ->middleware(['auth:test-mtls'])
+        ->middleware(['secureapi:mtls'])
         ->get('/mtls-protected', fn () => response()->json(['ok' => true]));
 
     $this->application = SecureApi::createApplication('mTLS Test App');

@@ -6,13 +6,8 @@ use SamirEltabal\SecureApi\Facades\SecureApi;
 use SamirEltabal\SecureApi\Models\AuditLog;
 
 beforeEach(function () {
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.audit'])
+        ->middleware(['secureapi:api_key', 'secureapi.audit'])
         ->get('/audited', fn () => response()->json(['ok' => true]));
 });
 
@@ -60,7 +55,7 @@ test('audit log records client ip', function () {
 test('failed auth writes audit log even without audit middleware', function () {
     // Route WITHOUT secureapi.audit middleware
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/unaudited-auth', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -77,7 +72,7 @@ test('failed auth writes audit log even without audit middleware', function () {
 
 test('failed auth log has correct application and credential ids', function () {
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/unaudited-auth', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -98,7 +93,7 @@ test('failed auth log has correct application and credential ids', function () {
 
 test('unknown key id does not write audit log', function () {
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/unaudited-auth', fn () => response()->json(['ok' => true]));
 
     // Key ID that doesn't exist in DB — no credential to link the audit to
@@ -113,7 +108,7 @@ test('unknown key id does not write audit log', function () {
 
 test('scope rejection writes audit log with forbidden event', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.audit', 'secureapi.scopes:write'])
+        ->middleware(['secureapi:api_key', 'secureapi.audit', 'secureapi.scopes:write'])
         ->get('/scoped-audited', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');
@@ -131,7 +126,7 @@ test('scope rejection writes audit log with forbidden event', function () {
 
 test('ip rejection writes audit log with forbidden event', function () {
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.audit', 'secureapi.allow_ips'])
+        ->middleware(['secureapi:api_key', 'secureapi.audit', 'secureapi.allow_ips'])
         ->get('/ip-audited', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App', ['allowed_ips' => ['10.0.0.1']]);
@@ -152,7 +147,7 @@ test('rate limit rejection writes audit log with rate_limited event', function (
     config()->set('cache.default', 'array');
 
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.audit', 'secureapi.throttle'])
+        ->middleware(['secureapi:api_key', 'secureapi.audit', 'secureapi.throttle'])
         ->get('/throttled-audited', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App', ['rate_limit_per_minute' => 1]);
@@ -176,7 +171,7 @@ test('rate limit rejection writes audit log with rate_limited event', function (
 
 test('route without audit middleware does not write success audit', function () {
     $this->app['router']
-        ->middleware(['auth:test-api'])
+        ->middleware(['secureapi:api_key'])
         ->get('/no-audit', fn () => response()->json(['ok' => true]));
 
     $app = SecureApi::createApplication('Test App');

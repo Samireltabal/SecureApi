@@ -8,13 +8,9 @@ use SamirEltabal\SecureApi\Models\Credential;
 
 beforeEach(function () {
     config()->set('cache.default', 'array');
-    config()->set('auth.guards.test-oauth-jwt', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['jwt'],
-    ]);
 
     $this->app['router']
-        ->middleware(['auth:test-oauth-jwt'])
+        ->middleware(['secureapi:jwt'])
         ->get('/bearer-protected', fn () => response()->json(['ok' => true]));
 
     $this->application = SecureApi::createApplication('OAuth Test App');

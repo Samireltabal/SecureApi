@@ -13,13 +13,9 @@ use SamirEltabal\SecureApi\Support\JwtManager;
 
 beforeEach(function () {
     config()->set('cache.default', 'array');
-    config()->set('auth.guards.test-jwt', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['jwt'],
-    ]);
 
     $this->app['router']
-        ->middleware(['auth:test-jwt'])
+        ->middleware(['secureapi:jwt'])
         ->get('/jwt-protected', fn () => response()->json(['ok' => true]));
 
     $this->application = SecureApi::createApplication('JWT Test App');
@@ -158,13 +154,8 @@ test('non-bearer authorization returns 401', function () {
 });
 
 test('api key format bearer does not trigger jwt auth', function () {
-    config()->set('auth.guards.multi-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['jwt', 'api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:multi-api'])
+        ->middleware(['secureapi:jwt,api_key'])
         ->get('/multi-protected', fn () => response()->json(['ok' => true]));
 
     $apiKeyIssued = SecureApi::createApiKeyCredential($this->application->id);
@@ -191,14 +182,9 @@ test('scopes are embedded in jwt and returned in auth result', function () {
     $credential = SecureApi::createJwtCredential($this->application->id, ['scopes' => ['read', 'write']]);
     $token = SecureApi::issueToken($this->application->id, ['credential_id' => $credential->id]);
 
-    config()->set('auth.guards.scoped-jwt', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['jwt'],
-    ]);
-
     $scopeResult = null;
     $this->app['router']
-        ->middleware(['auth:scoped-jwt'])
+        ->middleware(['secureapi:jwt'])
         ->get('/scoped-jwt', function () use (&$scopeResult) {
             /** @var Request $request */
             $request = request();
@@ -250,13 +236,8 @@ test('externally-signed token with trusted public key validates', function () {
 });
 
 test('jwt failure does not fall through when bearer present', function () {
-    config()->set('auth.guards.jwt-then-apikey', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['jwt', 'api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:jwt-then-apikey'])
+        ->middleware(['secureapi:jwt,api_key'])
         ->get('/fallthrough-protected', fn () => response()->json(['ok' => true]));
 
     $apiKeyIssued = SecureApi::createApiKeyCredential($this->application->id);

@@ -5,13 +5,8 @@ declare(strict_types=1);
 use SamirEltabal\SecureApi\Facades\SecureApi;
 
 beforeEach(function () {
-    config()->set('auth.guards.test-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:test-api', 'secureapi.allow_ips'])
+        ->middleware(['secureapi:api_key', 'secureapi.allow_ips'])
         ->get('/protected', fn () => response()->json(['ok' => true]));
 });
 

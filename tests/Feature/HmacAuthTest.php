@@ -8,17 +8,13 @@ use SamirEltabal\SecureApi\Signing\SignsRequests;
 
 beforeEach(function () {
     config()->set('cache.default', 'array');
-    config()->set('auth.guards.test-hmac', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['hmac'],
-    ]);
 
     $this->app['router']
-        ->middleware(['auth:test-hmac'])
+        ->middleware(['secureapi:hmac'])
         ->get('/hmac-protected', fn () => response()->json(['ok' => true]));
 
     $this->app['router']
-        ->middleware(['auth:test-hmac'])
+        ->middleware(['secureapi:hmac'])
         ->post('/hmac-protected', fn () => response()->json(['ok' => true]));
 
     $this->application = SecureApi::createApplication('HMAC Test App');
@@ -143,13 +139,8 @@ test('valid hmac auth updates last_used_at', function () {
 });
 
 test('hmac failure does not fall through to api_key', function () {
-    config()->set('auth.guards.multi-api', [
-        'driver' => 'secureapi',
-        'mechanisms' => ['hmac', 'api_key'],
-    ]);
-
     $this->app['router']
-        ->middleware(['auth:multi-api'])
+        ->middleware(['secureapi:hmac,api_key'])
         ->get('/multi-protected', fn () => response()->json(['ok' => true]));
 
     $apiKeyIssued = SecureApi::createApiKeyCredential($this->application->id);

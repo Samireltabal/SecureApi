@@ -5,15 +5,6 @@ declare(strict_types=1);
 use SamirEltabal\SecureApi\Exceptions\MtlsNotEnabled;
 use SamirEltabal\SecureApi\Facades\SecureApi;
 
-// Guard used for multi-mechanism tests
-function setupMixedGuard(string $guardName, array $mechanisms): void
-{
-    config()->set("auth.guards.{$guardName}", [
-        'driver' => 'secureapi',
-        'mechanisms' => $mechanisms,
-    ]);
-}
-
 beforeEach(function () {
     config()->set('cache.default', 'array');
     $this->application = SecureApi::createApplication('Hardening Test App');
@@ -21,24 +12,23 @@ beforeEach(function () {
 
 // ---------------------------------------------------------------------------
 // No-fallthrough: once a mechanism supports() and authenticate() fails,
-// the guard stops — it does NOT try the next mechanism.
+// the middleware stops — it does NOT try the next mechanism.
 // ---------------------------------------------------------------------------
 
-test('hmac failure does not fall through to api key in mixed guard', function () {
-    setupMixedGuard('test-mixed', ['hmac', 'api_key']);
+test('hmac failure does not fall through to api key in mixed middleware', function () {
     $this->app['router']
-        ->middleware(['auth:test-mixed'])
+        ->middleware(['secureapi:hmac,api_key'])
         ->get('/mixed-protected', fn () => response()->json(['ok' => true]));
 
     $issued = SecureApi::createApiKeyCredential($this->application->id);
-    $hmacIssued = SecureApi::createHmacCredential($this->application->id);
+    SecureApi::createHmacCredential($this->application->id);
 
     // Presents a valid API key but also a malformed HMAC signature — HMAC wins
-    // the supports() check (Authorization header present in HMAC format),
-    // fails authenticate(), and the guard stops immediately.
+    // the supports() check (signature header present), fails authenticate(), and
+    // the middleware stops immediately.
     $this->withHeaders([
-        'Authorization' => "Bearer {$issued->plaintextKey}", // api_key format
-        'X-SecureApi-Signature' => 'invalid-hmac-sig',       // triggers HMAC supports()
+        'Authorization' => "Bearer {$issued->plaintextKey}",
+        'X-SecureApi-Signature' => 'invalid-hmac-sig',
         'X-SecureApi-Timestamp' => (string) time(),
         'X-SecureApi-Nonce' => 'any-nonce',
     ])
@@ -46,15 +36,14 @@ test('hmac failure does not fall through to api key in mixed guard', function ()
         ->assertStatus(401);
 });
 
-test('api key failure does not fall through to jwt in mixed guard', function () {
-    setupMixedGuard('test-mixed2', ['api_key', 'jwt']);
+test('api key failure does not fall through to jwt in mixed middleware', function () {
     $this->app['router']
-        ->middleware(['auth:test-mixed2'])
+        ->middleware(['secureapi:api_key,jwt'])
         ->get('/mixed-protected2', fn () => response()->json(['ok' => true]));
 
     // Presents something that looks like an API key (sk_ prefix, right length)
     // but with wrong secret — api_key supports() is true, authenticate() fails,
-    // guard stops; jwt is never tried.
+    // middleware stops; jwt is never tried.
     $fakeKey = 'sk_'.str_repeat('a', 26).'_'.str_repeat('b', 64);
 
     $this->withHeader('Authorization', "Bearer {$fakeKey}")
@@ -68,9 +57,9 @@ test('api key failure does not fall through to jwt in mixed guard', function () 
 
 test('disabled mtls bubbles even when api key is downstream', function () {
     config()->set('secureapi.mtls.enabled', false);
-    setupMixedGuard('test-mixed3', ['mtls', 'api_key']);
+
     $this->app['router']
-        ->middleware(['auth:test-mixed3'])
+        ->middleware(['secureapi:mtls,api_key'])
         ->get('/mixed-protected3', fn () => response()->json(['ok' => true]));
 
     $issued = SecureApi::createApiKeyCredential($this->application->id);
@@ -85,9 +74,8 @@ test('disabled mtls bubbles even when api key is downstream', function () {
 // ---------------------------------------------------------------------------
 
 test('malformed api key formats return 401 not 500', function (string $token) {
-    setupMixedGuard('test-apikey-fuzz', ['api_key']);
     $this->app['router']
-        ->middleware(['auth:test-apikey-fuzz'])
+        ->middleware(['secureapi:api_key'])
         ->get('/apikey-fuzz', fn () => response()->json(['ok' => true]));
 
     $this->withHeader('Authorization', "Bearer {$token}")
@@ -103,9 +91,8 @@ test('malformed api key formats return 401 not 500', function (string $token) {
 ]);
 
 test('malformed jwt returns 401 not 500', function (string $token) {
-    setupMixedGuard('test-jwt-fuzz', ['jwt']);
     $this->app['router']
-        ->middleware(['auth:test-jwt-fuzz'])
+        ->middleware(['secureapi:jwt'])
         ->get('/jwt-fuzz', fn () => response()->json(['ok' => true]));
 
     $this->withHeader('Authorization', "Bearer {$token}")
@@ -120,9 +107,8 @@ test('malformed jwt returns 401 not 500', function (string $token) {
 ]);
 
 test('missing authorization header returns 401', function () {
-    setupMixedGuard('test-noauth', ['api_key']);
     $this->app['router']
-        ->middleware(['auth:test-noauth'])
+        ->middleware(['secureapi:api_key'])
         ->get('/noauth', fn () => response()->json(['ok' => true]));
 
     $this->getJson('/noauth')->assertStatus(401);
